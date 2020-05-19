@@ -5,11 +5,15 @@ const debounce = require('debounce')
 const copyToClipboard = require('copy-to-clipboard')
 const ENS = require('ethjs-ens')
 const networkMap = require('ethjs-ens/lib/network-map.json')
+const RNSRegistryData = require('@rsksmart/rns-registry/RNSRegistryData.json');
 const ensRE = /.+\..+$/
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 const log = require('loglevel')
-const { isValidENSAddress } = require('../util')
-
+const { isValidENSAddress, isValidRNSAddress } = require('../util')
+const { 
+  RSK_CODE,
+  RSK_TESTNET_CODE,
+} = require('../../../app/scripts/controllers/network/enums')
 
 module.exports = EnsInput
 
@@ -24,7 +28,8 @@ EnsInput.prototype.render = function () {
   function onInputChange () {
     const network = this.props.network
     const networkHasEnsSupport = getNetworkEnsSupport(network)
-    if (!networkHasEnsSupport) return
+    const networkHasRnsSupport = getNetworkRnsSupport(network)
+    if (!networkHasEnsSupport && !networkHasRnsSupport) return
 
     const recipient = document.querySelector('input[name="address"]').value
     if (recipient.match(ensRE) === null) {
@@ -81,12 +86,18 @@ EnsInput.prototype.render = function () {
 EnsInput.prototype.componentDidMount = function () {
   const network = this.props.network
   const networkHasEnsSupport = getNetworkEnsSupport(network)
+  const rnsRegistry = getNetworkRnsSupport(network)
+
   this.setState({ ensResolution: ZERO_ADDRESS })
 
   if (networkHasEnsSupport) {
     const provider = global.ethereumProvider
     this.ens = new ENS({ provider, network })
     this.checkName = debounce(this.lookupEnsName.bind(this), 200)
+  } else if (rnsRegistry) {
+    const provider = global.ethereumProvider
+    this.ens = new ENS({ provider, network, registryAddress: rnsRegistry })
+    this.checkName = debounce(this.lookupRnsName.bind(this), 200)
   }
 }
 
@@ -117,8 +128,47 @@ EnsInput.prototype.lookupEnsName = function () {
       toError: null,
     }
     if (isValidENSAddress(recipient) && reason.message === 'ENS name not defined.') {
-      setStateObj.hoverText = 'ENS name not found'
-      setStateObj.toError = 'ensNameNotFound'
+      setStateObj.hoverText = 'RNS name not found'
+      setStateObj.toError = 'rnsNameNotFound'
+      setStateObj.ensFailure = false
+    } else {
+      log.error(reason)
+      setStateObj.hoverText = reason.message
+    }
+
+    return this.setState(setStateObj)
+  })
+}
+
+EnsInput.prototype.lookupRnsName = function () {
+  const recipient = document.querySelector('input[name="address"]').value
+  const { ensResolution } = this.state
+
+  log.info(`RNS attempting to resolve name: ${recipient}`)
+  this.ens.lookup(recipient.trim()) 
+  .then((address) => {
+    if (address === ZERO_ADDRESS) throw new Error('No address has been set for this name.')
+    if (address !== ensResolution) {
+      this.setState({
+        loadingEns: false,
+        ensResolution: address,
+        nickname: recipient.trim(),
+        hoverText: address + '\nClick to Copy',
+        ensFailure: false,
+        toError: null,
+      })
+    }
+  })
+  .catch((reason) => {
+    const setStateObj = {
+      loadingEns: false,
+      ensResolution: recipient,
+      ensFailure: true,
+      toError: null,
+    }
+    if (isValidRNSAddress(recipient) && reason.message === 'RNS name not defined.') {
+      setStateObj.hoverText = 'RNS name not found'
+      setStateObj.toError = 'rnsNameNotFound'
       setStateObj.ensFailure = false
     } else {
       log.error(reason)
@@ -197,4 +247,16 @@ EnsInput.prototype.ensIconContents = function (recipient) {
 
 function getNetworkEnsSupport (network) {
   return Boolean(networkMap[network])
+}
+
+function getNetworkRnsSupport (network) {
+  if (network == RSK_CODE) {
+    return RNSRegistryData.address.rskMainnet;
+  }
+  
+  if (network == RSK_TESTNET_CODE) {
+    return RNSRegistryData.address.rskTestnet;
+  };
+
+  return;
 }
