@@ -93,19 +93,19 @@ EnsInput.prototype.componentDidMount = function () {
   if (networkHasEnsSupport) {
     const provider = global.ethereumProvider
     this.ens = new ENS({ provider, network })
-    this.checkName = debounce(this.lookupEnsName.bind(this), 200)
+    this.checkName = debounce(this.lookupEnsName.bind(this, 'ENS'), 200)
   } else if (rnsRegistry) {
     const provider = global.ethereumProvider
     this.ens = new ENS({ provider, network, registryAddress: rnsRegistry })
-    this.checkName = debounce(this.lookupRnsName.bind(this), 200)
+    this.checkName = debounce(this.lookupEnsName.bind(this, 'RNS'), 200)
   }
 }
 
-EnsInput.prototype.lookupEnsName = function () {
+EnsInput.prototype.lookupEnsName = function (nameService) {
   const recipient = document.querySelector('input[name="address"]').value
   const { ensResolution } = this.state
 
-  log.info(`ENS attempting to resolve name: ${recipient}`)
+  log.info(`${nameService} attempting to resolve name: ${recipient}`)
   this.ens.lookup(recipient.trim())
   .then((address) => {
     if (address === ZERO_ADDRESS) throw new Error('No address has been set for this name.')
@@ -127,48 +127,12 @@ EnsInput.prototype.lookupEnsName = function () {
       ensFailure: true,
       toError: null,
     }
-    if (isValidENSAddress(recipient) && reason.message === 'ENS name not defined.') {
-      setStateObj.hoverText = 'RNS name not found'
-      setStateObj.toError = 'rnsNameNotFound'
-      setStateObj.ensFailure = false
-    } else {
-      log.error(reason)
-      setStateObj.hoverText = reason.message
-    }
-
-    return this.setState(setStateObj)
-  })
-}
-
-EnsInput.prototype.lookupRnsName = function () {
-  const recipient = document.querySelector('input[name="address"]').value
-  const { ensResolution } = this.state
-
-  log.info(`RNS attempting to resolve name: ${recipient}`)
-  this.ens.lookup(recipient.trim()) 
-  .then((address) => {
-    if (address === ZERO_ADDRESS) throw new Error('No address has been set for this name.')
-    if (address !== ensResolution) {
-      this.setState({
-        loadingEns: false,
-        ensResolution: address,
-        nickname: recipient.trim(),
-        hoverText: address + '\nClick to Copy',
-        ensFailure: false,
-        toError: null,
-      })
-    }
-  })
-  .catch((reason) => {
-    const setStateObj = {
-      loadingEns: false,
-      ensResolution: recipient,
-      ensFailure: true,
-      toError: null,
-    }
-    if (isValidRNSAddress(recipient) && reason.message === 'RNS name not defined.') {
-      setStateObj.hoverText = 'RNS name not found'
-      setStateObj.toError = 'rnsNameNotFound'
+    if (
+      (isValidENSAddress(recipient) || isValidRNSAddress(recipient)) 
+      && reason.message === 'ENS name not defined.'
+    ) {
+      setStateObj.hoverText = `${nameService} name not found`
+      setStateObj.toError = `${nameService.toLowerCase}NameNotFound`
       setStateObj.ensFailure = false
     } else {
       log.error(reason)
