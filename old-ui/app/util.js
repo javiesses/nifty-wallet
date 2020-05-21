@@ -141,7 +141,7 @@ function isValidENSAddress (address) {
 }
 
 function isValidRNSAddress (address) {
-  return address.match(/^.{7,}\.(rsk)$/)
+  return address.match(/([a-z0-9])+\.(rsk)/)
 }
 
 function isInvalidChecksumAddress (address, network) {
